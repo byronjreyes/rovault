@@ -1,0 +1,212 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Bricolage Grotesque", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.875rem;
+
+    --brand-teal: 173 80% 40%;
+    --brand-cyan: 190 90% 42%;
+    --brand-violet: 280 85% 60%;
+    --brand-magenta: 300 100% 50%;
+  }
+
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 6%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 0 0% 13%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 0 0% 98%;
+
+    --brand-teal: 173 80% 48%;
+    --brand-cyan: 190 95% 50%;
+    --brand-violet: 280 90% 68%;
+    --brand-magenta: 300 100% 50%;
+  }
+}
+
+@layer base {
+  *, ::before, ::after {
+    @apply border-border;
+    font-family: inherit;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    font-family: var(--font-sans);
+  }
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary selection:text-primary-foreground;
+    letter-spacing: -0.011em;
+    overflow: hidden;
+  }
+  button {
+    background-color: transparent;
+  }
+  input,
+  select,
+  textarea {
+    @apply bg-background text-foreground;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/80 ring-offset-1 ring-offset-background;
+  }
+  .font-mono,
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: "JetBrains Mono", ui-monospace, monospace !important;
+  }
+}
+
+/* Accessibility Font Families */
+.font-family-bricolage,
+.font-family-bricolage body,
+.font-family-bricolage * {
+  font-family: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.font-family-gotham,
+.font-family-gotham body,
+.font-family-gotham * {
+  font-family: "Gotham", "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.font-family-poppins,
+.font-family-poppins body,
+.font-family-poppins * {
+  font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.font-family-montserrat,
+.font-family-montserrat body,
+.font-family-montserrat * {
+  font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.font-family-jakarta,
+.font-family-jakarta body,
+.font-family-jakarta * {
+  font-family: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* Snappy modern dialog animations */
+@keyframes modal-enter {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes modal-exit {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+}
+
+@keyframes overlay-enter {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes overlay-exit {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.animate-modal-enter {
+  animation: modal-enter 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-modal-exit {
+  animation: modal-exit 120ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-overlay-enter {
+  animation: overlay-enter 160ms ease-out forwards;
+}
+
+.animate-overlay-exit {
+  animation: overlay-exit 120ms ease-in forwards;
+}
+
+/* Bento & Glow Utility Classes */
+.bento-card {
+  @apply rounded-2xl border bg-card/90 backdrop-blur-md shadow-bento transition-all duration-200 hover:shadow-bento-hover hover:border-primary/30;
+}
+
+.bento-pill {
+  @apply rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150;
+}
+
+.glass-panel {
+  @apply bg-card/75 backdrop-blur-xl border border-border/70;
+}
+
+/* Custom, sleek scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

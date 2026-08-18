@@ -1,0 +1,40 @@
+[package]
+name = "rovault"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "rovault_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+argon2 = "0.5.3"
+chacha20poly1305 = { version = "0.10.1", features = ["std"] }
+rand = "0.8.5"
+base32 = "0.5.1"
+zeroize = { version = "1.8.1", features = ["derive"] }
+uuid = { version = "1.24.1", features = ["v4"] }
+tauri-plugin-clipboard-manager = "2.3.2"
+tauri-plugin-dialog = "2.7.2"
+tauri-plugin-fs = "2.5.1"
+keyring = { version = "3", features = ["windows-native"] }
+base64 = "0.23.1"
+windows = { version = "0.62.2", features = ["Security_Credentials_UI", "Foundation"] }
+windows-future = "0.3"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-process = "2.3.1"
+

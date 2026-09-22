@@ -5,7 +5,10 @@ mod totp;
 
 use serde::Serialize;
 use std::path::PathBuf;
-use store::{AppState, Credential, HistoryEntry, StoreError, VaultData, VaultFile};
+use store::{
+    AppState, Credential, HistoryEntry, NoteFile, NoteFolder, StoreError, VaultData,
+    VaultFile,
+};
 use tauri::{Manager, State};
 
 // ---- helpers ----
@@ -414,6 +417,128 @@ fn delete_entry(app: tauri::AppHandle, state: State<AppState>, id: String) -> Re
     persist(&app, &state)
 }
 
+// ---- folder CRUD ----
+
+#[tauri::command]
+fn list_folders(state: State<AppState>) -> Result<Vec<NoteFolder>, String> {
+    let session = state.session.lock().unwrap();
+    if !session.unlocked {
+        return Err(StoreError::Locked.to_string());
+    }
+    Ok(session.data.folders.clone())
+}
+
+#[tauri::command]
+fn upsert_folder(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    mut folder: NoteFolder,
+) -> Result<NoteFolder, String> {
+    {
+        let mut session = state.session.lock().unwrap();
+        if !session.unlocked {
+            return Err(StoreError::Locked.to_string());
+        }
+        let now = store::now_secs();
+        if folder.id.is_empty() {
+            folder.id = store::new_id();
+            folder.created_at = now;
+            folder.updated_at = now;
+            session.data.folders.push(folder.clone());
+        } else {
+            folder.updated_at = now;
+            if let Some(existing) = session.data.folders.iter_mut().find(|f| f.id == folder.id) {
+                folder.created_at = existing.created_at;
+                *existing = folder.clone();
+            } else {
+                return Err(StoreError::NotFound.to_string());
+            }
+        }
+    }
+    persist(&app, &state)?;
+    Ok(folder)
+}
+
+#[tauri::command]
+fn delete_folder(app: tauri::AppHandle, state: State<AppState>, id: String) -> Result<(), String> {
+    {
+        let mut session = state.session.lock().unwrap();
+        if !session.unlocked {
+            return Err(StoreError::Locked.to_string());
+        }
+        let before = session.data.folders.len();
+        session.data.folders.retain(|f| f.id != id);
+        if session.data.folders.len() == before {
+            return Err(StoreError::NotFound.to_string());
+        }
+        // Move orphaned notes to root (folder_id = None)
+        for note in session.data.notes.iter_mut() {
+            if note.folder_id.as_deref() == Some(&id) {
+                note.folder_id = None;
+            }
+        }
+    }
+    persist(&app, &state)
+}
+
+// ---- note CRUD ----
+
+#[tauri::command]
+fn list_notes(state: State<AppState>) -> Result<Vec<NoteFile>, String> {
+    let session = state.session.lock().unwrap();
+    if !session.unlocked {
+        return Err(StoreError::Locked.to_string());
+    }
+    Ok(session.data.notes.clone())
+}
+
+#[tauri::command]
+fn upsert_note(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    mut note: NoteFile,
+) -> Result<NoteFile, String> {
+    {
+        let mut session = state.session.lock().unwrap();
+        if !session.unlocked {
+            return Err(StoreError::Locked.to_string());
+        }
+        let now = store::now_secs();
+        if note.id.is_empty() {
+            note.id = store::new_id();
+            note.created_at = now;
+            note.updated_at = now;
+            session.data.notes.push(note.clone());
+        } else {
+            note.updated_at = now;
+            if let Some(existing) = session.data.notes.iter_mut().find(|n| n.id == note.id) {
+                note.created_at = existing.created_at;
+                *existing = note.clone();
+            } else {
+                return Err(StoreError::NotFound.to_string());
+            }
+        }
+    }
+    persist(&app, &state)?;
+    Ok(note)
+}
+
+#[tauri::command]
+fn delete_note(app: tauri::AppHandle, state: State<AppState>, id: String) -> Result<(), String> {
+    {
+        let mut session = state.session.lock().unwrap();
+        if !session.unlocked {
+            return Err(StoreError::Locked.to_string());
+        }
+        let before = session.data.notes.len();
+        session.data.notes.retain(|n| n.id != id);
+        if session.data.notes.len() == before {
+            return Err(StoreError::NotFound.to_string());
+        }
+    }
+    persist(&app, &state)
+}
+
 #[tauri::command]
 fn change_master_password(
     app: tauri::AppHandle,
@@ -460,6 +585,10 @@ pub struct PlainExport {
     pub name: String,
     pub exported_at: i64,
     pub entries: Vec<Credential>,
+    #[serde(default)]
+    pub folders: Vec<NoteFolder>,
+    #[serde(default)]
+    pub notes: Vec<NoteFile>,
 }
 
 /// Import an encrypted `.rovault` backup to restore / overwrite the vault.
@@ -520,6 +649,8 @@ fn export_plaintext(state: State<AppState>) -> Result<String, String> {
         name: session.name.clone(),
         exported_at: store::now_secs(),
         entries: session.data.entries.clone(),
+        folders: session.data.folders.clone(),
+        notes: session.data.notes.clone(),
     };
     serde_json::to_string_pretty(&payload).map_err(err)
 }
@@ -546,6 +677,24 @@ fn import_plaintext(
             }
             c.updated_at = now;
             session.data.entries.push(c);
+            count += 1;
+        }
+        for mut f in parsed.folders {
+            f.id = store::new_id();
+            if f.created_at == 0 {
+                f.created_at = now;
+            }
+            f.updated_at = now;
+            session.data.folders.push(f);
+            count += 1;
+        }
+        for mut n in parsed.notes {
+            n.id = store::new_id();
+            if n.created_at == 0 {
+                n.created_at = now;
+            }
+            n.updated_at = now;
+            session.data.notes.push(n);
             count += 1;
         }
     }
@@ -578,6 +727,12 @@ pub fn run() {
             list_entries,
             upsert_entry,
             delete_entry,
+            list_folders,
+            upsert_folder,
+            delete_folder,
+            list_notes,
+            upsert_note,
+            delete_note,
             change_master_password,
             totp_code,
             import_encrypted,

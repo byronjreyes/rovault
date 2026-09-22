@@ -32,6 +32,7 @@ dist-ssr/
 src-tauri/*.key
 src-tauri/updater.key
 src-tauri/updater.key.pub
+latest.json
 
 # AI / workspace cache
 .gemini/

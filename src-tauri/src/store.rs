@@ -49,10 +49,48 @@ pub struct Credential {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteFolder {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteImage {
+    pub id: String,
+    pub data: String, // Base64 or data URL
+    #[serde(default)]
+    pub mime: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteFile {
+    pub id: String,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+    pub title: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub images: Vec<NoteImage>,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
 /// Plaintext contents of a vault, in memory only while unlocked.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VaultData {
     pub entries: Vec<Credential>,
+    #[serde(default)]
+    pub folders: Vec<NoteFolder>,
+    #[serde(default)]
+    pub notes: Vec<NoteFile>,
 }
 
 /// What lands on disk (one per vault).
@@ -224,5 +262,48 @@ mod tests {
         assert_eq!(imported.entries_blob, original_blob);
         assert_eq!(imported.keyfile.wrapped_dek_password, backup.keyfile.wrapped_dek_password);
         assert!(imported.keyfile.wrapped_dek_biometric.is_none());
+    }
+
+    #[test]
+    fn legacy_vault_data_deserializes_with_empty_folders_and_notes() {
+        // Simulates old v0.1.0 VaultData which only had entries
+        let legacy_json = r#"{"entries":[{"id":"1","provider":"Test","username":"user","password":"pw"}]}"#;
+        let data: VaultData = serde_json::from_str(legacy_json).expect("should deserialize legacy data");
+        assert_eq!(data.entries.len(), 1);
+        assert_eq!(data.entries[0].provider, "Test");
+        assert!(data.folders.is_empty());
+        assert!(data.notes.is_empty());
+    }
+
+    #[test]
+    fn v020_vault_data_roundtrip_with_folders_and_notes() {
+        let mut data = VaultData::default();
+        data.folders.push(NoteFolder {
+            id: "f1".into(),
+            name: "Work Docs".into(),
+            created_at: 100,
+            updated_at: 100,
+        });
+        data.notes.push(NoteFile {
+            id: "n1".into(),
+            folder_id: Some("f1".into()),
+            title: "Secret Strategy".into(),
+            content: "<h1>Confidential</h1><p>Plan content</p>".into(),
+            images: vec![NoteImage {
+                id: "img1".into(),
+                data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==".into(),
+                mime: "image/png".into(),
+            }],
+            created_at: 100,
+            updated_at: 100,
+        });
+
+        let json = serde_json::to_string(&data).unwrap();
+        let deserialized: VaultData = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.folders.len(), 1);
+        assert_eq!(deserialized.folders[0].name, "Work Docs");
+        assert_eq!(deserialized.notes.len(), 1);
+        assert_eq!(deserialized.notes[0].title, "Secret Strategy");
+        assert_eq!(deserialized.notes[0].images.len(), 1);
     }
 }

@@ -40,6 +40,29 @@ export interface TotpCode {
   seconds_remaining: number;
 }
 
+export interface NoteFolder {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface NoteImage {
+  id: string;
+  data: string; // Base64 data URL
+  mime: string;
+}
+
+export interface NoteFile {
+  id: string;
+  folder_id: string | null;
+  title: string;
+  content: string; // Rich text / HTML
+  images: NoteImage[];
+  created_at: number;
+  updated_at: number;
+}
+
 export function emptyCredential(): Credential {
   return {
     id: "",
@@ -52,6 +75,18 @@ export function emptyCredential(): Credential {
     favorite: false,
     totp_secret: "",
     history: [],
+    created_at: 0,
+    updated_at: 0,
+  };
+}
+
+export function emptyNote(folderId?: string | null): NoteFile {
+  return {
+    id: "",
+    folder_id: folderId || null,
+    title: "",
+    content: "",
+    images: [],
     created_at: 0,
     updated_at: 0,
   };
@@ -86,6 +121,16 @@ export const api = {
   deleteEntry: (id: string) => invoke<void>("delete_entry", { id }),
   changeMasterPassword: (currentPassword: string, newPassword: string) =>
     invoke<void>("change_master_password", { currentPassword, newPassword }),
+
+  // folders
+  listFolders: () => invoke<NoteFolder[]>("list_folders"),
+  upsertFolder: (folder: NoteFolder) => invoke<NoteFolder>("upsert_folder", { folder }),
+  deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
+
+  // notes
+  listNotes: () => invoke<NoteFile[]>("list_notes"),
+  upsertNote: (note: NoteFile) => invoke<NoteFile>("upsert_note", { note }),
+  deleteNote: (id: string) => invoke<void>("delete_note", { id }),
 
   // totp
   totpCode: (secret: string) => invoke<TotpCode>("totp_code", { secret }),

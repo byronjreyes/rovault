@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { api, type Credential } from "@/lib/api";
+import { api, type Credential, type NoteFolder, type NoteFile } from "@/lib/api";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,8 @@ import {
 import { CredentialDialog } from "./CredentialDialog";
 import { SettingsDialog, getAutolockMinutes } from "./Settings";
 import { PasswordGenerator } from "./PasswordGenerator";
+import { FolderScreen } from "./FolderScreen";
+import { NotesScreen } from "./NotesScreen";
 import { TotpDisplay } from "@/components/TotpDisplay";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { passwordStrength } from "@/lib/password";
@@ -38,6 +40,8 @@ import {
   ShoppingBag,
   Users,
   Folder,
+  FolderOpen,
+  FileText,
   KeyRound,
   ShieldAlert,
   ShieldCheck,
@@ -46,6 +50,8 @@ import {
   PanelLeft,
   PanelLeftClose,
   LogOut,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -70,6 +76,13 @@ function openWebsite(url: string) {
 export function Dashboard({ onLock }: { onLock: () => void }) {
   const toast = useToast();
   const [entries, setEntries] = useState<Credential[]>([]);
+  const [folders, setFolders] = useState<NoteFolder[]>([]);
+  const [notes, setNotes] = useState<NoteFile[]>([]);
+  const [activeModule, setActiveModule] = useState<"passwords" | "folders" | "notes">("passwords");
+  const [passwordsExpanded, setPasswordsExpanded] = useState(true);
+  const [foldersExpanded, setFoldersExpanded] = useState(false);
+  const [notesExpanded, setNotesExpanded] = useState(false);
+  const [notesFolderFilter, setNotesFolderFilter] = useState<string | null>(null);
   const [vaultName, setVaultName] = useState("ROVault");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("All");
@@ -83,8 +96,15 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
 
   const refresh = useCallback(async () => {
     try {
-      setEntries(await api.listEntries());
-      const s = await api.sessionInfo();
+      const [entryList, folderList, noteList, s] = await Promise.all([
+        api.listEntries(),
+        api.listFolders(),
+        api.listNotes(),
+        api.sessionInfo(),
+      ]);
+      setEntries(entryList);
+      setFolders(folderList);
+      setNotes(noteList);
       setVaultName(s.name || "ROVault");
     } catch (e) {
       toast(String(e), "error");
@@ -260,50 +280,216 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
           )}
         </div>
 
-        {/* Navigation Categories */}
-        <nav className="flex-1 space-y-0.5 overflow-y-auto w-full pr-0.5" aria-label="Categories">
-          <SidebarButton
-            collapsed={sidebarCollapsed}
-            active={category === "All"}
-            onClick={() => setCategory("All")}
-            icon={LayoutGrid}
-            label="All items"
-            count={entries.length}
-          />
-          <SidebarButton
-            collapsed={sidebarCollapsed}
-            active={category === "Favorites"}
-            onClick={() => setCategory("Favorites")}
-            icon={Star}
-            label="Favorites"
-            count={entries.filter((e) => e.favorite).length}
-          />
-          <SidebarButton
-            collapsed={sidebarCollapsed}
-            active={category === "Audit"}
-            onClick={() => setCategory("Audit")}
-            icon={ShieldAlert}
-            label="Security audit"
-            count={auditCount}
-            danger={auditCount > 0}
-          />
-
-          {!sidebarCollapsed && categories.length > 0 && (
-            <div className="px-2.5 pb-1 pt-3.5 text-xs font-semibold text-slate-700 dark:text-zinc-400">
-              Categories
-            </div>
-          )}
-          {categories.map((c) => (
+        {/* Navigation: 3 Main Groups */}
+        <nav className="flex-1 space-y-1 overflow-y-auto w-full pr-0.5" aria-label="Main Navigation">
+          {/* 1. Main Nav Group: Password Manager */}
+          <div>
             <SidebarButton
-              key={c}
               collapsed={sidebarCollapsed}
-              active={category === c}
-              onClick={() => setCategory(c)}
-              icon={CATEGORY_ICONS[c] || Folder}
-              label={c}
-              count={entries.filter((e) => e.category === c).length}
+              isGroupHeader
+              active={activeModule === "passwords" && (sidebarCollapsed || !passwordsExpanded)}
+              onClick={() => {
+                if (sidebarCollapsed) {
+                  setActiveModule("passwords");
+                  return;
+                }
+                const next = !passwordsExpanded;
+                setPasswordsExpanded(next);
+                if (next) {
+                  setFoldersExpanded(false);
+                  setNotesExpanded(false);
+                  setActiveModule("passwords");
+                }
+              }}
+              icon={KeyRound}
+              label="Password Manager"
+              trailing={
+                passwordsExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+                )
+              }
             />
-          ))}
+
+            {/* Password Manager Sub-items (NO 'Categories' header!) */}
+            {!sidebarCollapsed && passwordsExpanded && (
+              <div className="space-y-0.5 pt-0.5 animate-in fade-in-0 duration-150">
+                <SidebarButton
+                  collapsed={false}
+                  indent
+                  active={activeModule === "passwords" && category === "All"}
+                  onClick={() => {
+                    setActiveModule("passwords");
+                    setCategory("All");
+                  }}
+                  icon={LayoutGrid}
+                  label="All items"
+                  count={entries.length}
+                />
+                <SidebarButton
+                  collapsed={false}
+                  indent
+                  active={activeModule === "passwords" && category === "Favorites"}
+                  onClick={() => {
+                    setActiveModule("passwords");
+                    setCategory("Favorites");
+                  }}
+                  icon={Star}
+                  label="Favorites"
+                  count={entries.filter((e) => e.favorite).length}
+                />
+                <SidebarButton
+                  collapsed={false}
+                  indent
+                  active={activeModule === "passwords" && category === "Audit"}
+                  onClick={() => {
+                    setActiveModule("passwords");
+                    setCategory("Audit");
+                  }}
+                  icon={ShieldAlert}
+                  label="Security audit"
+                  count={auditCount}
+                  danger={auditCount > 0}
+                />
+
+                {/* Dynamic categories (Social, Other, etc.) moved directly inside Password Manager */}
+                {categories.map((c) => (
+                  <SidebarButton
+                    key={c}
+                    collapsed={false}
+                    indent
+                    active={activeModule === "passwords" && category === c}
+                    onClick={() => {
+                      setActiveModule("passwords");
+                      setCategory(c);
+                    }}
+                    icon={CATEGORY_ICONS[c] || Folder}
+                    label={c}
+                    count={entries.filter((e) => e.category === c).length}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Main Nav Group: Folder Manager */}
+          <div>
+            <SidebarButton
+              collapsed={sidebarCollapsed}
+              isGroupHeader
+              active={activeModule === "folders" && (sidebarCollapsed || !foldersExpanded)}
+              onClick={() => {
+                if (sidebarCollapsed) {
+                  setActiveModule("folders");
+                  return;
+                }
+                const next = !foldersExpanded;
+                setFoldersExpanded(next);
+                if (next) {
+                  setPasswordsExpanded(false);
+                  setNotesExpanded(false);
+                  setActiveModule("folders");
+                }
+              }}
+              icon={Folder}
+              label="Folder Manager"
+              count={folders.length}
+              trailing={
+                foldersExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+                )
+              }
+            />
+
+            {/* Folder Manager Sub-items */}
+            {!sidebarCollapsed && foldersExpanded && (
+              <div className="space-y-0.5 pt-0.5 animate-in fade-in-0 duration-150">
+                <SidebarButton
+                  collapsed={false}
+                  indent
+                  active={activeModule === "folders" && notesFolderFilter === null}
+                  onClick={() => {
+                    setActiveModule("folders");
+                    setNotesFolderFilter(null);
+                  }}
+                  icon={FolderOpen}
+                  label="All Folders"
+                  count={folders.length}
+                />
+                {folders.map((f) => {
+                  const count = notes.filter((n) => n.folder_id === f.id).length;
+                  return (
+                    <SidebarButton
+                      key={f.id}
+                      collapsed={false}
+                      indent
+                      active={activeModule === "notes" && notesFolderFilter === f.id}
+                      onClick={() => {
+                        setNotesFolderFilter(f.id);
+                        setActiveModule("notes");
+                      }}
+                      icon={Folder}
+                      label={f.name}
+                      count={count}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 3. Main Nav Group: Notepad Manager */}
+          <div>
+            <SidebarButton
+              collapsed={sidebarCollapsed}
+              isGroupHeader
+              active={activeModule === "notes" && (sidebarCollapsed || !notesExpanded)}
+              onClick={() => {
+                if (sidebarCollapsed) {
+                  setActiveModule("notes");
+                  return;
+                }
+                const next = !notesExpanded;
+                setNotesExpanded(next);
+                if (next) {
+                  setPasswordsExpanded(false);
+                  setFoldersExpanded(false);
+                  setActiveModule("notes");
+                }
+              }}
+              icon={FileText}
+              label="Notepad Manager"
+              count={notes.length}
+              trailing={
+                notesExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+                )
+              }
+            />
+
+            {/* Notepad Manager Sub-items */}
+            {!sidebarCollapsed && notesExpanded && (
+              <div className="space-y-0.5 pt-0.5 animate-in fade-in-0 duration-150">
+                <SidebarButton
+                  collapsed={false}
+                  indent
+                  active={activeModule === "notes" && notesFolderFilter === null}
+                  onClick={() => {
+                    setActiveModule("notes");
+                    setNotesFolderFilter(null);
+                  }}
+                  icon={FileText}
+                  label="All Notes"
+                  count={notes.length}
+                />
+              </div>
+            )}
+          </div>
         </nav>
 
         {/* Bottom Controls (Settings + Sign Out Lock) */}
@@ -332,10 +518,41 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex flex-1 flex-col overflow-hidden">
-        {/* Header Bar */}
-        <header className="flex items-center gap-3 border-b border-border/80 bg-card/40 px-5 py-3 backdrop-blur-md">
+      {/* Main Content Areas */}
+      {activeModule === "folders" && (
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <FolderScreen
+            folders={folders}
+            notes={notes}
+            onRefresh={refresh}
+            onSelectFolder={(folderId) => {
+              setNotesFolderFilter(folderId);
+              setActiveModule("notes");
+            }}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        </main>
+      )}
+
+      {activeModule === "notes" && (
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <NotesScreen
+            notes={notes}
+            folders={folders}
+            selectedFolderId={notesFolderFilter}
+            onSelectFolderFilter={setNotesFolderFilter}
+            onRefresh={refresh}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        </main>
+      )}
+
+      {activeModule === "passwords" && (
+        <main className="flex flex-1 flex-col overflow-hidden">
+          {/* Header Bar */}
+          <header className="flex items-center gap-3 border-b border-border/80 bg-card/40 px-5 py-3 backdrop-blur-md">
           <Button
             variant="ghost"
             size="icon"
@@ -608,6 +825,7 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
           )}
         </div>
       </main>
+      )}
 
       <CredentialDialog
         open={dialogOpen}
@@ -668,6 +886,9 @@ function SidebarButton({
   active,
   danger,
   collapsed,
+  indent,
+  trailing,
+  isGroupHeader,
   onClick,
 }: {
   icon: typeof Globe;
@@ -676,6 +897,9 @@ function SidebarButton({
   active?: boolean;
   danger?: boolean;
   collapsed?: boolean;
+  indent?: boolean;
+  trailing?: React.ReactNode;
+  isGroupHeader?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -684,7 +908,13 @@ function SidebarButton({
       title={collapsed ? label : undefined}
       className={cn(
         "flex items-center rounded-lg text-xs font-medium transition-colors duration-150 active:scale-[0.99]",
-        collapsed ? "w-9 h-9 justify-center p-0 mx-auto" : "w-full gap-2.5 px-2.5 py-2",
+        collapsed
+          ? "w-9 h-9 justify-center p-0 mx-auto"
+          : cn(
+              "w-full gap-2.5 py-2",
+              indent ? "pl-7 pr-2.5 text-[12px]" : "px-2.5"
+            ),
+        isGroupHeader && !collapsed && "font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-white/[0.04]",
         active
           ? "bg-slate-200/90 text-slate-950 font-semibold shadow-xs dark:bg-[#1f1f23] dark:text-white"
           : "bg-transparent text-slate-700 hover:text-slate-950 hover:bg-slate-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-white/[0.04]"
@@ -711,6 +941,7 @@ function SidebarButton({
           {count}
         </span>
       )}
+      {!collapsed && trailing}
     </button>
   );
 }

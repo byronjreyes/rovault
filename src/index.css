@@ -212,11 +212,47 @@
 }
 
 /* TipTap rich text styles */
+.tiptap,
+.tiptap:focus,
+.tiptap:focus-visible,
+.tiptap.ProseMirror,
+.tiptap.ProseMirror:focus,
+.tiptap.ProseMirror:focus-visible,
+.ProseMirror,
+.ProseMirror:focus,
+.ProseMirror:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  ring: 0 !important;
+}
+
 .tiptap {
-  outline: none;
-  min-height: 280px;
+  min-height: 380px;
   font-size: 0.95rem;
   line-height: 1.6;
+}
+
+.tiptap img {
+  display: inline-block;
+  max-width: 340px;
+  max-height: 280px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.75rem;
+  margin: 0.75rem 0;
+  border: 1px solid hsl(var(--border) / 0.7);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.3);
+  transition: width 0.15s ease;
+  resize: both;
+  overflow: hidden;
+}
+
+.tiptap img.ProseMirror-selectednode {
+  outline: 2px solid hsl(var(--primary)) !important;
 }
 
 .tiptap p.is-editor-empty:first-child::before {
@@ -281,10 +317,10 @@
 .tiptap img {
   max-width: 100%;
   height: auto;
-  border-radius: 0.75rem;
-  margin: 1rem 0;
-  border: 1px solid hsl(var(--border));
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.25);
+  border-radius: 0;
+  margin: 0.75rem 0;
+  border: 1px solid hsl(var(--border) / 0.5);
+  box-shadow: none;
 }
 
 .tiptap code {

@@ -63,6 +63,17 @@ export interface NoteFile {
   updated_at: number;
 }
 
+export interface VaultDocFile {
+  id: string;
+  folder_id: string | null;
+  name: string;
+  size: number;
+  mime: string;
+  data: string; // Base64 encoded file data
+  created_at: number;
+  updated_at: number;
+}
+
 export function emptyCredential(): Credential {
   return {
     id: "",
@@ -131,6 +142,16 @@ export const api = {
   listNotes: () => invoke<NoteFile[]>("list_notes"),
   upsertNote: (note: NoteFile) => invoke<NoteFile>("upsert_note", { note }),
   deleteNote: (id: string) => invoke<void>("delete_note", { id }),
+
+  // files (Word, Excel, PDF, Images, etc.)
+  listFiles: () => invoke<VaultDocFile[]>("list_files"),
+  upsertFile: (file: VaultDocFile) => invoke<VaultDocFile>("upsert_file", { file }),
+  upsertFiles: (files: VaultDocFile[]) => invoke<VaultDocFile[]>("upsert_files", { files }),
+  deleteFile: (id: string) => invoke<void>("delete_file", { id }),
+  openVaultFile: (name: string, data: string) =>
+    invoke<void>("open_vault_file", { name, data }),
+  readDroppedFile: (path: string) =>
+    invoke<{ name: string; size: number; mime: string; data: string }>("read_dropped_file", { path }),
 
   // totp
   totpCode: (secret: string) => invoke<TotpCode>("totp_code", { secret }),

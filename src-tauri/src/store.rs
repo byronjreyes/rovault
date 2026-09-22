@@ -83,6 +83,24 @@ pub struct NoteFile {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultDocFile {
+    pub id: String,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+    pub name: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub mime: String,
+    #[serde(default)]
+    pub data: String, // Base64 encoded file data
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
 /// Plaintext contents of a vault, in memory only while unlocked.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VaultData {
@@ -91,6 +109,8 @@ pub struct VaultData {
     pub folders: Vec<NoteFolder>,
     #[serde(default)]
     pub notes: Vec<NoteFile>,
+    #[serde(default)]
+    pub files: Vec<VaultDocFile>,
 }
 
 /// What lands on disk (one per vault).
@@ -273,6 +293,7 @@ mod tests {
         assert_eq!(data.entries[0].provider, "Test");
         assert!(data.folders.is_empty());
         assert!(data.notes.is_empty());
+        assert!(data.files.is_empty());
     }
 
     #[test]
@@ -297,6 +318,16 @@ mod tests {
             created_at: 100,
             updated_at: 100,
         });
+        data.files.push(VaultDocFile {
+            id: "doc1".into(),
+            folder_id: Some("f1".into()),
+            name: "Financial_Report.xlsx".into(),
+            size: 1024,
+            mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".into(),
+            data: "base64data".into(),
+            created_at: 100,
+            updated_at: 100,
+        });
 
         let json = serde_json::to_string(&data).unwrap();
         let deserialized: VaultData = serde_json::from_str(&json).unwrap();
@@ -305,5 +336,7 @@ mod tests {
         assert_eq!(deserialized.notes.len(), 1);
         assert_eq!(deserialized.notes[0].title, "Secret Strategy");
         assert_eq!(deserialized.notes[0].images.len(), 1);
+        assert_eq!(deserialized.files.len(), 1);
+        assert_eq!(deserialized.files[0].name, "Financial_Report.xlsx");
     }
 }

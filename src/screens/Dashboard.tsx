@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { api, type Credential, type NoteFolder, type NoteFile } from "@/lib/api";
+import { api, type Credential, type NoteFolder, type NoteFile, type VaultDocFile } from "@/lib/api";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -78,10 +78,12 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
   const [entries, setEntries] = useState<Credential[]>([]);
   const [folders, setFolders] = useState<NoteFolder[]>([]);
   const [notes, setNotes] = useState<NoteFile[]>([]);
-  const [activeModule, setActiveModule] = useState<"passwords" | "folders" | "notes">("passwords");
+  const [docFiles, setDocFiles] = useState<VaultDocFile[]>([]);
+  const [activeModule, setActiveModule] = useState<"passwords" | "documents" | "notes">("passwords");
   const [passwordsExpanded, setPasswordsExpanded] = useState(true);
-  const [foldersExpanded, setFoldersExpanded] = useState(false);
+  const [documentsExpanded, setDocumentsExpanded] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
+  const [selectedDocFolderId, setSelectedDocFolderId] = useState<string | null>(null);
   const [notesFolderFilter, setNotesFolderFilter] = useState<string | null>(null);
   const [vaultName, setVaultName] = useState("ROVault");
   const [search, setSearch] = useState("");
@@ -96,15 +98,17 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [entryList, folderList, noteList, s] = await Promise.all([
+      const [entryList, folderList, noteList, fileList, s] = await Promise.all([
         api.listEntries(),
         api.listFolders(),
         api.listNotes(),
+        api.listFiles(),
         api.sessionInfo(),
       ]);
       setEntries(entryList);
       setFolders(folderList);
       setNotes(noteList);
+      setDocFiles(fileList);
       setVaultName(s.name || "ROVault");
     } catch (e) {
       toast(String(e), "error");
@@ -296,7 +300,7 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
                 const next = !passwordsExpanded;
                 setPasswordsExpanded(next);
                 if (next) {
-                  setFoldersExpanded(false);
+                  setDocumentsExpanded(false);
                   setNotesExpanded(false);
                   setActiveModule("passwords");
                 }
@@ -373,30 +377,30 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
             )}
           </div>
 
-          {/* 2. Main Nav Group: Folder Manager */}
+          {/* 2. Main Nav Group: Documents (formerly Folder Manager) */}
           <div>
             <SidebarButton
               collapsed={sidebarCollapsed}
               isGroupHeader
-              active={activeModule === "folders" && (sidebarCollapsed || !foldersExpanded)}
+              active={activeModule === "documents" && (sidebarCollapsed || !documentsExpanded)}
               onClick={() => {
                 if (sidebarCollapsed) {
-                  setActiveModule("folders");
+                  setActiveModule("documents");
                   return;
                 }
-                const next = !foldersExpanded;
-                setFoldersExpanded(next);
+                const next = !documentsExpanded;
+                setDocumentsExpanded(next);
                 if (next) {
                   setPasswordsExpanded(false);
                   setNotesExpanded(false);
-                  setActiveModule("folders");
+                  setActiveModule("documents");
                 }
               }}
               icon={Folder}
-              label="Folder Manager"
-              count={folders.length}
+              label="Documents"
+              count={folders.length + docFiles.length}
               trailing={
-                foldersExpanded ? (
+                documentsExpanded ? (
                   <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
                 ) : (
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
@@ -404,32 +408,34 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
               }
             />
 
-            {/* Folder Manager Sub-items */}
-            {!sidebarCollapsed && foldersExpanded && (
+            {/* Documents Sub-items */}
+            {!sidebarCollapsed && documentsExpanded && (
               <div className="space-y-0.5 pt-0.5 animate-in fade-in-0 duration-150">
                 <SidebarButton
                   collapsed={false}
                   indent
-                  active={activeModule === "folders" && notesFolderFilter === null}
+                  active={activeModule === "documents" && selectedDocFolderId === null}
                   onClick={() => {
-                    setActiveModule("folders");
-                    setNotesFolderFilter(null);
+                    setActiveModule("documents");
+                    setSelectedDocFolderId(null);
                   }}
                   icon={FolderOpen}
-                  label="All Folders"
-                  count={folders.length}
+                  label="All Documents"
+                  count={folders.length + docFiles.length}
                 />
                 {folders.map((f) => {
-                  const count = notes.filter((n) => n.folder_id === f.id).length;
+                  const count =
+                    notes.filter((n) => n.folder_id === f.id).length +
+                    docFiles.filter((df) => df.folder_id === f.id).length;
                   return (
                     <SidebarButton
                       key={f.id}
                       collapsed={false}
                       indent
-                      active={activeModule === "notes" && notesFolderFilter === f.id}
+                      active={activeModule === "documents" && selectedDocFolderId === f.id}
                       onClick={() => {
-                        setNotesFolderFilter(f.id);
-                        setActiveModule("notes");
+                        setSelectedDocFolderId(f.id);
+                        setActiveModule("documents");
                       }}
                       icon={Folder}
                       label={f.name}
@@ -441,7 +447,7 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
             )}
           </div>
 
-          {/* 3. Main Nav Group: Notepad Manager */}
+          {/* 3. Main Nav Group: Notes (formerly Notepad Manager) */}
           <div>
             <SidebarButton
               collapsed={sidebarCollapsed}
@@ -456,12 +462,12 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
                 setNotesExpanded(next);
                 if (next) {
                   setPasswordsExpanded(false);
-                  setFoldersExpanded(false);
+                  setDocumentsExpanded(false);
                   setActiveModule("notes");
                 }
               }}
               icon={FileText}
-              label="Notepad Manager"
+              label="Notes"
               count={notes.length}
               trailing={
                 notesExpanded ? (
@@ -472,7 +478,7 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
               }
             />
 
-            {/* Notepad Manager Sub-items */}
+            {/* Notes Sub-items */}
             {!sidebarCollapsed && notesExpanded && (
               <div className="space-y-0.5 pt-0.5 animate-in fade-in-0 duration-150">
                 <SidebarButton
@@ -519,16 +525,15 @@ export function Dashboard({ onLock }: { onLock: () => void }) {
       </aside>
 
       {/* Main Content Areas */}
-      {activeModule === "folders" && (
+      {activeModule === "documents" && (
         <main className="flex flex-1 flex-col overflow-hidden">
           <FolderScreen
             folders={folders}
             notes={notes}
+            files={docFiles}
+            selectedFolderId={selectedDocFolderId}
+            onSelectFolder={setSelectedDocFolderId}
             onRefresh={refresh}
-            onSelectFolder={(folderId) => {
-              setNotesFolderFilter(folderId);
-              setActiveModule("notes");
-            }}
             sidebarCollapsed={sidebarCollapsed}
             onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           />

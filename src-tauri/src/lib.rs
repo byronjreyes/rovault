@@ -6,7 +6,7 @@ mod totp;
 use serde::Serialize;
 use std::path::PathBuf;
 use store::{
-    AppState, Credential, HistoryEntry, NoteFile, NoteFolder, StoreError, VaultData,
+    AppState, Credential, HistoryEntry, NoteFile, NoteFolder, StoreError, VaultData, VaultDocFile,
     VaultFile,
 };
 use tauri::{Manager, State};
@@ -471,10 +471,15 @@ fn delete_folder(app: tauri::AppHandle, state: State<AppState>, id: String) -> R
         if session.data.folders.len() == before {
             return Err(StoreError::NotFound.to_string());
         }
-        // Move orphaned notes to root (folder_id = None)
+        // Move orphaned notes and files to root (folder_id = None)
         for note in session.data.notes.iter_mut() {
             if note.folder_id.as_deref() == Some(&id) {
                 note.folder_id = None;
+            }
+        }
+        for file in session.data.files.iter_mut() {
+            if file.folder_id.as_deref() == Some(&id) {
+                file.folder_id = None;
             }
         }
     }
@@ -539,6 +544,185 @@ fn delete_note(app: tauri::AppHandle, state: State<AppState>, id: String) -> Res
     persist(&app, &state)
 }
 
+// ---- file CRUD (Word, Excel, PDF, Images, etc.) ----
+
+#[tauri::command]
+fn list_files(state: State<AppState>) -> Result<Vec<VaultDocFile>, String> {
+    let session = state.session.lock().unwrap();
+    if !session.unlocked {
+        return Err(StoreError::Locked.to_string());
+    }
+    Ok(session.data.files.clone())
+}
+
+#[tauri::command]
+fn upsert_files(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    files: Vec<VaultDocFile>,
+) -> Result<Vec<VaultDocFile>, String> {
+    let mut modified = false;
+    let mut saved_files = Vec::new();
+    {
+        let mut session = state.session.lock().unwrap();
+        if !session.unlocked {
+            return Err(StoreError::Locked.to_string());
+        }
+        let now = store::now_secs();
+        for mut file in files {
+            if file.id.is_empty() {
+                // Deduplicate against existing files in vault (same folder, name, and size within 10s)
+                if let Some(existing) = session.data.files.iter().find(|f| {
+                    f.folder_id == file.folder_id
+                        && f.name == file.name
+                        && f.size == file.size
+                        && (now - f.updated_at).abs() < 10
+                }) {
+                    saved_files.push(existing.clone());
+                    continue;
+                }
+                // Also deduplicate within current batch
+                if let Some(in_batch) = saved_files.iter().find(|f: &&VaultDocFile| {
+                    f.folder_id == file.folder_id && f.name == file.name && f.size == file.size
+                }) {
+                    saved_files.push((*in_batch).clone());
+                    continue;
+                }
+                file.id = store::new_id();
+                file.created_at = now;
+                file.updated_at = now;
+                session.data.files.push(file.clone());
+                saved_files.push(file);
+                modified = true;
+            } else {
+                file.updated_at = now;
+                if let Some(existing) = session.data.files.iter_mut().find(|f| f.id == file.id) {
+                    file.created_at = existing.created_at;
+                    *existing = file.clone();
+                    saved_files.push(file);
+                    modified = true;
+                } else {
+                    return Err(StoreError::NotFound.to_string());
+                }
+            }
+        }
+    }
+    if modified {
+        persist(&app, &state)?;
+    }
+    Ok(saved_files)
+}
+
+#[tauri::command]
+fn upsert_file(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    file: VaultDocFile,
+) -> Result<VaultDocFile, String> {
+    let res = upsert_files(app, state, vec![file])?;
+    res.into_iter().next().ok_or_else(|| "Failed to save file".to_string())
+}
+
+#[tauri::command]
+fn delete_file(app: tauri::AppHandle, state: State<AppState>, id: String) -> Result<(), String> {
+    {
+        let mut session = state.session.lock().unwrap();
+        if !session.unlocked {
+            return Err(StoreError::Locked.to_string());
+        }
+        let before = session.data.files.len();
+        session.data.files.retain(|f| f.id != id);
+        if session.data.files.len() == before {
+            return Err(StoreError::NotFound.to_string());
+        }
+    }
+    persist(&app, &state)
+}
+
+#[tauri::command]
+fn open_vault_file(name: String, data: String) -> Result<(), String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let b64 = if let Some(idx) = data.find(";base64,") {
+        &data[idx + 8..]
+    } else {
+        &data
+    };
+    let bytes = STANDARD
+        .decode(b64.trim())
+        .map_err(|e| format!("Base64 decode error: {e}"))?;
+
+    let temp_dir = std::env::temp_dir().join("rovault_preview");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+
+    let clean_name = name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+    let file_path = temp_dir.join(&clean_name);
+    std::fs::write(&file_path, bytes).map_err(|e| format!("Failed to write preview file: {e}"))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new("cmd")
+            .args(["/C", "start", "", &file_path.to_string_lossy()])
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {e}"))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        opener::open(&file_path).map_err(|e| format!("Failed to open file: {e}"))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn read_dropped_file(path: String) -> Result<serde_json::Value, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err("Path is not a valid file".to_string());
+    }
+    let name = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unnamed_file")
+        .to_string();
+    let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+    let size = bytes.len() as u64;
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "doc" => "application/msword",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls" => "application/vnd.ms-excel",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "txt" => "text/plain",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "zip" => "application/zip",
+        _ => "application/octet-stream",
+    };
+
+    let base64 = format!("data:{mime};base64,{}", STANDARD.encode(&bytes));
+
+    Ok(serde_json::json!({
+        "name": name,
+        "size": size,
+        "mime": mime,
+        "data": base64,
+    }))
+}
+
 #[tauri::command]
 fn change_master_password(
     app: tauri::AppHandle,
@@ -589,6 +773,8 @@ pub struct PlainExport {
     pub folders: Vec<NoteFolder>,
     #[serde(default)]
     pub notes: Vec<NoteFile>,
+    #[serde(default)]
+    pub files: Vec<VaultDocFile>,
 }
 
 /// Import an encrypted `.rovault` backup to restore / overwrite the vault.
@@ -651,6 +837,7 @@ fn export_plaintext(state: State<AppState>) -> Result<String, String> {
         entries: session.data.entries.clone(),
         folders: session.data.folders.clone(),
         notes: session.data.notes.clone(),
+        files: session.data.files.clone(),
     };
     serde_json::to_string_pretty(&payload).map_err(err)
 }
@@ -697,6 +884,15 @@ fn import_plaintext(
             session.data.notes.push(n);
             count += 1;
         }
+        for mut fl in parsed.files {
+            fl.id = store::new_id();
+            if fl.created_at == 0 {
+                fl.created_at = now;
+            }
+            fl.updated_at = now;
+            session.data.files.push(fl);
+            count += 1;
+        }
     }
     persist(&app, &state)?;
     Ok(count)
@@ -733,6 +929,12 @@ pub fn run() {
             list_notes,
             upsert_note,
             delete_note,
+            list_files,
+            upsert_file,
+            upsert_files,
+            delete_file,
+            open_vault_file,
+            read_dropped_file,
             change_master_password,
             totp_code,
             import_encrypted,
